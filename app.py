@@ -595,7 +595,7 @@ if run:
                 textfont=dict(family="JetBrains Mono", size=10, color="#334155"),
             ))
         fig_bar.update_layout(
-            title=dict(text="Ground State Energies", font=dict(**FONT, size=12, color="#1E3A5F")),
+            title=dict(text="Ground State Energies", font=dict(family="JetBrains Mono", size=12, color="#1E3A5F")),
             paper_bgcolor=PAPER_BG, plot_bgcolor=PLOT_BG,
             font=FONT, showlegend=False, barmode="group",
             yaxis=dict(gridcolor=GRID, title="|E| (Ha)", title_font=dict(size=10, color="#1E3A5F"),
