@@ -1,0 +1,23 @@
+# Quantum Drug Interaction Predictor — Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Core Quantum Computing ────────────────────────────────────────────────────
+qiskit>=1.0.0                  # Core Qiskit framework
+qiskit-algorithms>=0.3.0       # VQE, NumPyMinimumEigensolver
+qiskit-nature>=0.7.0           # Molecular Hamiltonians, Jordan-Wigner mapper
+qiskit-aer>=0.14.0             # Noise simulators (for QASM backend)
+
+# ── Quantum Chemistry Backend ─────────────────────────────────────────────────
+pyscf>=2.4.0                   # Electronic structure calculations (Hartree-Fock)
+
+# ── Web App ───────────────────────────────────────────────────────────────────
+streamlit>=1.30.0              # Interactive dashboard
+plotly>=5.18.0                 # Interactive charts
+
+# ── Molecule Data ─────────────────────────────────────────────────────────────
+requests>=2.31.0               # PubChem API calls
+rdkit>=2023.9.0                # (Optional) 3D molecule structure from SMILES
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+numpy>=1.26.0
+scipy>=1.11.0
