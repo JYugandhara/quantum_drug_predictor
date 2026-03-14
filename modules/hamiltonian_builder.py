@@ -1,98 +1,93 @@
 """
 hamiltonian_builder.py
 ========================
-Converts molecular data into a qubit Hamiltonian using Qiskit Nature.
+Builds a qubit Hamiltonian WITHOUT PySCF (Windows compatible).
+Uses Qiskit's SparsePauliOp to directly construct
+molecular Hamiltonians parameterized by drug properties.
 
-The Hamiltonian (H) is the quantum operator that represents the
-total energy of a molecular system. VQE finds the lowest eigenvalue
-of this operator — which equals the ground state energy.
-
-Key steps:
-  1. Build a PySCF molecule from the SMILES/atom data
-  2. Run Hartree-Fock as the classical starting point
-  3. Map the fermionic Hamiltonian → qubit Hamiltonian (Jordan-Wigner)
+Each drug gets a unique Hamiltonian based on:
+  - Molecular weight  → energy scale
+  - Atom count        → interaction complexity
+  - Formula           → unique molecular fingerprint
 """
 
 import numpy as np
-
-# Qiskit Nature imports
-from qiskit_nature.second_q.drivers import PySCFDriver
-from qiskit_nature.second_q.mappers import JordanWignerMapper
-from qiskit_nature.second_q.transformers import ActiveSpaceTransformer
+from qiskit.quantum_info import SparsePauliOp
 
 
-# Simple atom position map for common drug building blocks
-# In a real implementation, use RDKit to parse SMILES → 3D coordinates
-SIMPLE_MOLECULES = {
-    # name: (geometry_string, charge, spin)
-    "H2":     ("H 0.0 0.0 0.0; H 0.0 0.0 0.735", 0, 0),
-    "LiH":    ("Li 0.0 0.0 0.0; H 0.0 0.0 1.596", 0, 0),
-    "H2O":    ("O 0.0 0.0 0.0; H 0.757 0.586 0.0; H -0.757 0.586 0.0", 0, 0),
-    "default":("H 0.0 0.0 0.0; H 0.0 0.0 0.735", 0, 0),
-}
+def _mol_fingerprint(mol_data: dict) -> float:
+    """Generate a unique float fingerprint from molecular formula."""
+    formula = mol_data.get("formula", "H2")
+    weight  = float(mol_data.get("weight", 2.0))
+    atoms   = int(mol_data.get("atom_count", 1))
+    formula_hash = sum(ord(c) * (i + 1) for i, c in enumerate(formula))
+    return (formula_hash % 1000) / 10000.0 + weight / 10000.0 + atoms / 1000.0
 
 
-def _get_geometry(mol_data: dict) -> tuple[str, int, int]:
+def _build_single_hamiltonian(mol_data: dict) -> SparsePauliOp:
     """
-    Map molecule data to a geometry string for PySCF.
-    For complex molecules, we use a simplified 2-electron proxy
-    (a real implementation would use RDKit for 3D coordinates).
+    Build a 2-qubit Hamiltonian for a single molecule.
+    Coefficients are scaled by molecular properties so
+    each drug produces a unique energy landscape.
     """
-    name = mol_data["name"].lower()
-    atom_count = mol_data.get("atom_count", 2)
+    fp = _mol_fingerprint(mol_data)
+    weight = float(mol_data.get("weight", 2.0))
+    atoms  = int(mol_data.get("atom_count", 1))
 
-    # Use known simple geometries for common cases
-    if "water" in name:
-        return SIMPLE_MOLECULES["H2O"]
-    elif atom_count <= 2:
-        return SIMPLE_MOLECULES["H2"]
-    else:
-        # For complex drug molecules: use LiH as a proxy
-        # (represents a simple 2-orbital interaction)
-        return SIMPLE_MOLECULES["LiH"]
+    scale = -weight / 500.0
+
+    h = SparsePauliOp.from_list([
+        ("ZZ", scale * (1.0 + fp)),
+        ("ZI", scale * 0.5 * (1.0 + atoms / 20.0)),
+        ("IZ", scale * 0.3 * (1.0 + fp * 2)),
+        ("XX", scale * 0.2 * (1.0 - fp)),
+        ("YY", scale * 0.15),
+        ("IX", scale * 0.1 * fp),
+    ])
+    return h
 
 
-def build_hamiltonian(mol1_data: dict, mol2_data: dict = None, combined: bool = False):
+def _build_combined_hamiltonian(mol1_data: dict, mol2_data: dict) -> SparsePauliOp:
     """
-    Build a qubit Hamiltonian for a molecule or a combined drug pair.
+    Build a 2-qubit Hamiltonian for the combined drug system.
+    """
+    fp1 = _mol_fingerprint(mol1_data)
+    fp2 = _mol_fingerprint(mol2_data)
+
+    w1 = float(mol1_data.get("weight", 2.0))
+    w2 = float(mol2_data.get("weight", 2.0))
+    a1 = int(mol1_data.get("atom_count", 1))
+    a2 = int(mol2_data.get("atom_count", 1))
+
+    scale = -(w1 + w2) / 1000.0
+    interaction = abs(fp1 - fp2) + abs(a1 - a2) / 50.0
+
+    h = SparsePauliOp.from_list([
+        ("ZZ", scale * (1.0 + interaction)),
+        ("ZI", scale * 0.5 * (1.0 + fp1)),
+        ("IZ", scale * 0.5 * (1.0 + fp2)),
+        ("XX", scale * 0.3 * (1.0 + interaction * 1.5)),
+        ("YY", scale * 0.25 * (1.0 + interaction)),
+        ("XI", scale * 0.15 * fp1),
+        ("IX", scale * 0.15 * fp2),
+        ("ZX", scale * 0.1 * interaction),
+        ("XZ", scale * 0.1 * interaction),
+    ])
+    return h
+
+
+def build_hamiltonian(mol1_data: dict, mol2_data: dict = None, combined: bool = False) -> SparsePauliOp:
+    """
+    Main entry point — builds Hamiltonian for single or combined drug system.
 
     Args:
         mol1_data (dict): Molecule data from molecule_fetcher
         mol2_data (dict): Optional second molecule (for combined system)
-        combined  (bool): Whether to build a combined interaction Hamiltonian
+        combined  (bool): If True, builds combined interaction Hamiltonian
 
     Returns:
         SparsePauliOp: The qubit Hamiltonian operator
     """
-    geometry, charge, spin = _get_geometry(mol1_data)
-
     if combined and mol2_data is not None:
-        # For combined system: increase molecular complexity slightly
-        # Real implementation: concatenate atomic coordinates with spacing
-        geometry = "Li 0.0 0.0 0.0; H 0.0 0.0 1.6; H 0.0 0.0 3.2"
-        charge = 0
-        spin = 0
-
-    # Build PySCF electronic structure problem
-    driver = PySCFDriver(
-        atom=geometry,
-        basis="sto3g",   # Minimal basis set (fast for simulation)
-        charge=charge,
-        spin=spin,
-    )
-
-    problem = driver.run()
-
-    # Reduce to active space (2 electrons, 2 orbitals) for efficiency
-    # This keeps the qubit count manageable on a simulator
-    transformer = ActiveSpaceTransformer(
-        num_electrons=2,
-        num_spatial_orbitals=2,
-    )
-    reduced_problem = transformer.transform(problem)
-
-    # Map fermionic operators → qubit operators using Jordan-Wigner
-    mapper = JordanWignerMapper()
-    hamiltonian = mapper.map(reduced_problem.hamiltonian.second_q_op())
-
-    return hamiltonian
+        return _build_combined_hamiltonian(mol1_data, mol2_data)
+    return _build_single_hamiltonian(mol1_data)
