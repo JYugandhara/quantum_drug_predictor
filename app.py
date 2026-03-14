@@ -1,429 +1,776 @@
 """
-Quantum Drug Interaction Predictor — QuantumRx
+QuantumRx — Quantum Drug Interaction Predictor
 ================================================
-Professional blue-themed dashboard with enhanced UI.
-Uses VQE (Variational Quantum Eigensolver) to simulate
-drug molecule interactions at the quantum level.
+Premium professional UI with animations, rich visualizations,
+comparison history, radar charts, and full quantum pipeline.
 """
 
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px
+import numpy as np
 import time
+import pandas as pd
 from modules.molecule_fetcher import fetch_molecule_data
 from modules.hamiltonian_builder import build_hamiltonian
 from modules.vqe_solver import run_vqe
 from modules.interaction_analyzer import analyze_interaction, get_risk_level
 
-# ── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="QuantumRx — Drug Interaction Predictor",
+    page_title="QuantumRx",
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ── Professional Blue CSS ──────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, [class*="css"] {
-    font-family: 'IBM Plex Sans', sans-serif;
-    background-color: #020B18;
-    color: #CBD5E1;
+    font-family: 'Inter', sans-serif;
+    background: #03070F;
+    color: #94A3B8;
 }
+
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 1.5rem 2rem 3rem; max-width: 1200px; }
+.block-container { padding: 0 2rem 4rem; max-width: 1280px; }
 
-.hero {
-    background: linear-gradient(135deg, #020B18 0%, #0A1628 40%, #0D2444 100%);
-    border: 1px solid #1E3A5F;
-    border-radius: 16px;
-    padding: 3rem 2.5rem 2.5rem;
-    margin-bottom: 2rem;
+/* ═══════════════════════ HERO ═══════════════════════ */
+.qrx-hero {
     position: relative;
+    padding: 4rem 3rem 3rem;
+    margin-bottom: 2.5rem;
     overflow: hidden;
+    border-bottom: 1px solid rgba(30,58,95,0.6);
 }
-.hero-tag {
-    display: inline-block;
-    background: rgba(56,189,248,0.1);
-    border: 1px solid rgba(56,189,248,0.3);
-    color: #38BDF8;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    letter-spacing: 2px;
-    padding: 4px 12px;
-    border-radius: 20px;
+.qrx-hero-grid {
+    position: absolute; inset: 0;
+    background-image:
+        linear-gradient(rgba(37,99,235,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37,99,235,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%);
+}
+.qrx-hero-glow {
+    position: absolute;
+    top: -120px; left: 50%; transform: translateX(-50%);
+    width: 700px; height: 400px;
+    background: radial-gradient(ellipse, rgba(37,99,235,0.12) 0%, rgba(56,189,248,0.06) 40%, transparent 70%);
+    pointer-events: none;
+}
+.qrx-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(37,99,235,0.08);
+    border: 1px solid rgba(37,99,235,0.25);
+    color: #60A5FA;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 2.5px;
+    padding: 5px 14px; border-radius: 100px;
+    margin-bottom: 1.5rem;
+}
+.qrx-badge::before { content: '●'; color: #22D3EE; font-size: 0.5rem; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.qrx-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 3.2rem; font-weight: 600;
+    color: #F8FAFC; letter-spacing: -1px;
+    line-height: 1.1; margin-bottom: 1rem;
+}
+.qrx-title .accent { 
+    color: transparent;
+    background: linear-gradient(135deg, #38BDF8, #2563EB);
+    -webkit-background-clip: text; background-clip: text;
+}
+.qrx-subtitle {
+    font-size: 1rem; color: #64748B;
+    max-width: 580px; line-height: 1.8;
+    margin-bottom: 2.5rem;
+}
+.qrx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.qrx-chip {
+    background: rgba(15,23,42,0.8);
+    border: 1px solid #1E3A5F;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; color: #475569;
+}
+.qrx-chip b { color: #38BDF8; }
+
+/* ═══════════════════════ CARDS ═══════════════════════ */
+.card {
+    background: #080F1E;
+    border: 1px solid #0F2037;
+    border-radius: 16px;
+    padding: 1.8rem;
+    transition: border-color 0.2s;
+}
+.card:hover { border-color: #1E3A5F; }
+.card-sm {
+    background: #080F1E;
+    border: 1px solid #0F2037;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+}
+.card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 3px;
+    color: #2563EB; text-transform: uppercase;
     margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 8px;
 }
-.hero h1 {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 2.4rem;
-    font-weight: 600;
-    color: #F0F9FF;
-    margin: 0.5rem 0 0.8rem;
-    line-height: 1.2;
+.card-title::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, #0F2037, transparent);
 }
-.hero h1 span { color: #38BDF8; }
-.hero p { color: #64748B; font-size: 0.95rem; max-width: 600px; line-height: 1.7; margin: 0; }
-.hero-stats { display: flex; gap: 2rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #1E3A5F; }
-.hero-stat-label { color: #38BDF8; font-family: 'IBM Plex Mono', monospace; font-size: 1.3rem; font-weight: 600; }
-.hero-stat-desc { color: #475569; font-size: 0.78rem; margin-top: 2px; }
 
-.section-header {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    letter-spacing: 3px;
-    color: #38BDF8;
-    text-transform: uppercase;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #1E3A5F;
+/* ═══════════════════════ INPUT ═══════════════════════ */
+.drug-input-wrapper {
+    position: relative;
 }
-.blue-divider { border: none; height: 1px; background: linear-gradient(90deg, transparent, #1E3A5F, transparent); margin: 2rem 0; }
-
-.input-card { background: #0A1628; border: 1px solid #1E3A5F; border-radius: 12px; padding: 1.5rem; }
-.input-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; letter-spacing: 2px; color: #38BDF8; margin-bottom: 0.5rem; }
-
-.stTextInput input {
-    background: #020B18 !important; border: 1px solid #1E3A5F !important;
-    border-radius: 8px !important; color: #F0F9FF !important;
-    font-family: 'IBM Plex Mono', monospace !important; font-size: 0.95rem !important;
-    padding: 0.7rem 1rem !important;
+.drug-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 2px;
+    color: #2563EB; margin-bottom: 6px;
 }
-.stTextInput input:focus { border-color: #2563EB !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important; }
+.stTextInput > div > div > input {
+    background: #03070F !important;
+    border: 1px solid #1E3A5F !important;
+    border-radius: 10px !important;
+    color: #F1F5F9 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 1rem !important;
+    padding: 0.85rem 1.1rem !important;
+    transition: all 0.2s !important;
+}
+.stTextInput > div > div > input:focus {
+    border-color: #2563EB !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.12), 0 0 20px rgba(37,99,235,0.08) !important;
+    outline: none !important;
+}
+.stTextInput > div > div > input::placeholder { color: #1E3A5F !important; }
 
+/* ═══════════════════════ BUTTON ═══════════════════════ */
 .stButton > button {
-    background: linear-gradient(135deg, #1D4ED8, #2563EB) !important;
-    color: #F0F9FF !important; border: 1px solid #3B82F6 !important;
-    border-radius: 10px !important; font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 0.9rem !important; font-weight: 600 !important;
-    letter-spacing: 1px !important; padding: 0.75rem 2rem !important; width: 100% !important;
+    position: relative; overflow: hidden;
+    background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 50%, #1D4ED8 100%) !important;
+    background-size: 200% auto !important;
+    color: #fff !important;
+    border: 1px solid rgba(96,165,250,0.3) !important;
+    border-radius: 12px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.82rem !important; font-weight: 600 !important;
+    letter-spacing: 2px !important;
+    padding: 0.9rem 2rem !important;
+    width: 100% !important;
+    transition: all 0.3s !important;
 }
 .stButton > button:hover {
-    background: linear-gradient(135deg, #2563EB, #3B82F6) !important;
-    box-shadow: 0 8px 25px rgba(37,99,235,0.35) !important;
+    background-position: right center !important;
+    box-shadow: 0 0 30px rgba(37,99,235,0.4), 0 8px 32px rgba(0,0,0,0.4) !important;
+    transform: translateY(-1px) !important;
+    border-color: rgba(96,165,250,0.6) !important;
 }
 
-.metric-card { background: #0A1628; border: 1px solid #1E3A5F; border-radius: 12px; padding: 1.2rem 1.5rem; text-align: center; }
-.metric-value { font-family: 'IBM Plex Mono', monospace; font-size: 1.5rem; font-weight: 600; color: #38BDF8; }
-.metric-label { color: #475569; font-size: 0.78rem; margin-top: 4px; }
+/* ═══════════════════════ METRICS ═══════════════════════ */
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 1.5rem 0; }
+.metric-box {
+    background: #080F1E;
+    border: 1px solid #0F2037;
+    border-radius: 14px;
+    padding: 1.3rem;
+    text-align: center;
+    position: relative; overflow: hidden;
+    transition: all 0.2s;
+}
+.metric-box::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, #2563EB, transparent);
+}
+.metric-box:hover { border-color: #1E3A5F; transform: translateY(-2px); }
+.metric-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.6rem; font-weight: 600;
+    color: #38BDF8; display: block; margin-bottom: 4px;
+}
+.metric-lbl { font-size: 0.72rem; color: #334155; letter-spacing: 0.5px; }
 
-.drug-info { background: #0A1628; border: 1px solid #1E3A5F; border-left: 3px solid #2563EB; border-radius: 0 12px 12px 0; padding: 1.2rem 1.5rem; margin-bottom: 0.8rem; }
-.drug-info-name { font-family: 'IBM Plex Mono', monospace; font-size: 1rem; color: #F0F9FF; font-weight: 600; margin-bottom: 0.5rem; }
-.drug-info-detail { color: #64748B; font-size: 0.82rem; line-height: 1.8; }
-.drug-info-detail span { color: #94A3B8; }
+/* ═══════════════════════ RISK CARDS ═══════════════════════ */
+.verdict-card {
+    border-radius: 16px; padding: 2.5rem;
+    margin: 1.5rem 0; position: relative; overflow: hidden;
+}
+.verdict-card::before {
+    content: ''; position: absolute;
+    top: -50px; right: -50px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    opacity: 0.08;
+}
+.verdict-safe { background: #020F08; border: 1px solid rgba(16,185,129,0.4); }
+.verdict-safe::before { background: #10B981; }
+.verdict-caution { background: #0D0900; border: 1px solid rgba(245,158,11,0.4); }
+.verdict-caution::before { background: #F59E0B; }
+.verdict-danger { background: #0F0404; border: 1px solid rgba(239,68,68,0.4); }
+.verdict-danger::before { background: #EF4444; }
 
-.result-safe { background: linear-gradient(135deg,#022C22,#064E3B); border: 1px solid #10B981; border-radius: 14px; padding: 2rem; margin: 1.5rem 0; }
-.result-caution { background: linear-gradient(135deg,#1C1203,#292500); border: 1px solid #F59E0B; border-radius: 14px; padding: 2rem; margin: 1.5rem 0; }
-.result-danger { background: linear-gradient(135deg,#1C0505,#2D0A0A); border: 1px solid #EF4444; border-radius: 14px; padding: 2rem; margin: 1.5rem 0; }
-.result-title { font-family: 'IBM Plex Mono', monospace; font-size: 1.3rem; font-weight: 600; margin-bottom: 0.7rem; }
-.result-body { font-size: 0.9rem; line-height: 1.8; opacity: 0.85; }
+.verdict-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.5rem; font-weight: 600; margin-bottom: 0.8rem;
+}
+.verdict-text { font-size: 0.9rem; line-height: 1.9; color: #64748B; }
 
-.energy-terminal { background: #010810; border: 1px solid #1E3A5F; border-top: 3px solid #2563EB; border-radius: 0 0 12px 12px; padding: 1.5rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; color: #38BDF8; line-height: 2; }
-.terminal-header { background: #0A1628; border: 1px solid #1E3A5F; border-bottom: none; border-radius: 12px 12px 0 0; padding: 0.6rem 1rem; }
-.t-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+/* ═══════════════════════ TERMINAL ═══════════════════════ */
+.qrx-terminal {
+    background: #020509;
+    border: 1px solid #0F2037;
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+}
+.terminal-bar {
+    background: #080F1E;
+    border-bottom: 1px solid #0F2037;
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 6px;
+}
+.td { width:11px;height:11px;border-radius:50%;display:inline-block; }
+.terminal-body {
+    padding: 1.5rem;
+    font-size: 0.8rem;
+    line-height: 2.1;
+    color: #334155;
+}
+.tl-key { color: #1E3A5F; }
+.tl-val { color: #38BDF8; }
+.tl-hi  { color: #F1F5F9; font-weight: 600; }
+.tl-sep { color: #0F2037; }
+.tl-safe { color: #10B981; font-weight: 600; }
+.tl-warn { color: #F59E0B; font-weight: 600; }
+.tl-danger { color: #EF4444; font-weight: 600; }
+.tl-dim { color: #0F2037; }
 
-.circuit-box { background: #010810; border: 1px solid #1E3A5F; border-radius: 12px; padding: 1.2rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: #2563EB; overflow-x: auto; line-height: 1.9; }
+/* ═══════════════════════ MOLECULE CARD ═══════════════════════ */
+.mol-card {
+    background: #080F1E;
+    border: 1px solid #0F2037;
+    border-radius: 14px;
+    padding: 1.5rem;
+    border-left: 3px solid #2563EB;
+    transition: all 0.2s;
+}
+.mol-card:hover { border-color: #2563EB; border-left-color: #38BDF8; }
+.mol-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem; font-weight: 600;
+    color: #F1F5F9; margin-bottom: 1rem;
+    letter-spacing: -0.3px;
+}
+.mol-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #080F1E; }
+.mol-key { font-size: 0.78rem; color: #334155; }
+.mol-val { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #64748B; }
 
-.step-row { display: flex; gap: 0; margin: 1rem 0; }
-.step-item { flex: 1; text-align: center; position: relative; }
-.step-num { width: 32px; height: 32px; background: #0D2444; border: 1px solid #2563EB; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: #38BDF8; }
-.step-label { font-size: 0.72rem; color: #475569; margin-top: 6px; }
+/* ═══════════════════════ CIRCUIT ═══════════════════════ */
+.qrx-circuit {
+    background: #020509;
+    border: 1px solid #0F2037;
+    border-radius: 14px;
+    padding: 2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem; line-height: 2.2;
+    overflow-x: auto;
+}
 
-.sidebar-section { background: #0A1628; border: 1px solid #1E3A5F; border-radius: 10px; padding: 1rem; margin-bottom: 0.8rem; font-size: 0.82rem; color: #64748B; }
-.sidebar-section strong { color: #38BDF8; display: block; margin-bottom: 4px; }
+/* ═══════════════════════ HISTORY ═══════════════════════ */
+.history-row {
+    display: flex; align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #080F1E;
+    transition: background 0.15s;
+    font-size: 0.82rem;
+}
+.history-row:hover { background: #080F1E; }
+.history-drugs { font-family: 'JetBrains Mono', monospace; color: #94A3B8; flex: 1; }
+.history-de { font-family: 'JetBrains Mono', monospace; color: #475569; width: 140px; }
+.history-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem;
+    padding: 3px 10px; border-radius: 100px; font-weight: 600;
+}
+.badge-safe { background: rgba(16,185,129,0.1); color: #10B981; border: 1px solid rgba(16,185,129,0.2); }
+.badge-caution { background: rgba(245,158,11,0.1); color: #F59E0B; border: 1px solid rgba(245,158,11,0.2); }
+.badge-danger { background: rgba(239,68,68,0.1); color: #EF4444; border: 1px solid rgba(239,68,68,0.2); }
 
-[data-testid="stSidebar"] { background: #020B18 !important; border-right: 1px solid #1E3A5F !important; }
-.stProgress > div > div { background: #2563EB !important; }
+/* ═══════════════════════ PROGRESS ═══════════════════════ */
+.stProgress > div > div { background: linear-gradient(90deg, #1D4ED8, #38BDF8) !important; border-radius: 4px !important; }
+
+/* ═══════════════════════ SIDEBAR ═══════════════════════ */
+[data-testid="stSidebar"] {
+    background: #03070F !important;
+    border-right: 1px solid #0F2037 !important;
+}
+[data-testid="stSidebar"] .stSelectbox > div, [data-testid="stSidebar"] .stSlider { }
+.sb-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem; font-weight: 600; color: #F1F5F9;
+    padding-bottom: 1rem; margin-bottom: 1.5rem;
+    border-bottom: 1px solid #0F2037;
+    display: flex; align-items: center; gap: 8px;
+}
+.sb-section {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem; letter-spacing: 3px; color: #1E3A5F;
+    text-transform: uppercase; margin: 1.5rem 0 0.8rem;
+}
+.sb-info {
+    background: #080F1E; border: 1px solid #0F2037;
+    border-radius: 10px; padding: 0.9rem 1rem;
+    font-size: 0.78rem; color: #334155; margin-bottom: 6px;
+    line-height: 1.7;
+}
+.sb-info b { color: #2563EB; display: block; margin-bottom: 2px; font-size: 0.7rem; letter-spacing: 1px; }
+
+.stSelectbox select { background: #080F1E !important; }
+div[data-testid="stSelectbox"] > div { background: #080F1E !important; border-color: #0F2037 !important; }
+
+/* ═══════════════════════ DIVIDER ═══════════════════════ */
+.qrx-div { height: 1px; background: linear-gradient(90deg, transparent, #0F2037 20%, #0F2037 80%, transparent); margin: 2rem 0; }
+
+/* Plotly transparent bg */
+.js-plotly-plot .plotly { background: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Hero ───────────────────────────────────────────────────────────────────────
+# ── Session state ──────────────────────────────────────────────────────────────
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "drug1" not in st.session_state:
+    st.session_state.drug1 = "Aspirin"
+if "drug2" not in st.session_state:
+    st.session_state.drug2 = "Ibuprofen"
+
+
+# ── HERO ───────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="hero">
-    <div class="hero-tag">⚛ QUANTUM COMPUTING · DRUG SAFETY ANALYSIS</div>
-    <h1>Quantum<span>Rx</span></h1>
-    <p>First-principles quantum simulation of drug-drug interactions using the
-    Variational Quantum Eigensolver (VQE). Each molecule gets a unique quantum
-    energy fingerprint — no ML guessing, pure quantum physics.</p>
-    <div class="hero-stats">
-        <div><div class="hero-stat-label">VQE</div><div class="hero-stat-desc">Algorithm</div></div>
-        <div><div class="hero-stat-label">2-Qubit</div><div class="hero-stat-desc">Quantum Circuit</div></div>
-        <div><div class="hero-stat-label">PubChem</div><div class="hero-stat-desc">Live Molecule Data</div></div>
-        <div><div class="hero-stat-label">Hartree</div><div class="hero-stat-desc">Energy Units</div></div>
+<div class="qrx-hero">
+    <div class="qrx-hero-grid"></div>
+    <div class="qrx-hero-glow"></div>
+    <div class="qrx-badge">QUANTUM · CHEMISTRY · VQE · DRUG SAFETY</div>
+    <div class="qrx-title">Quantum<span class="accent">Rx</span></div>
+    <div class="qrx-subtitle">
+        First-principles quantum simulation of drug-drug interactions.
+        Every molecule receives a unique quantum energy fingerprint — 
+        no statistical ML, pure quantum physics.
+    </div>
+    <div class="qrx-chips">
+        <div class="qrx-chip"><b>Algorithm</b> VQE</div>
+        <div class="qrx-chip"><b>Circuit</b> TwoLocal 2-Qubit</div>
+        <div class="qrx-chip"><b>Mapper</b> Pauli Operators</div>
+        <div class="qrx-chip"><b>Data</b> PubChem REST API</div>
+        <div class="qrx-chip"><b>Units</b> Hartree / kcal·mol⁻¹</div>
+        <div class="qrx-chip"><b>Backend</b> Qiskit Statevector</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Pipeline steps
-st.markdown("""
-<div class="step-row">
-    <div class="step-item"><div class="step-num">01</div><div class="step-label">Fetch Molecule</div></div>
-    <div class="step-item"><div class="step-num">02</div><div class="step-label">Build Hamiltonian</div></div>
-    <div class="step-item"><div class="step-num">03</div><div class="step-label">Run VQE</div></div>
-    <div class="step-item"><div class="step-num">04</div><div class="step-label">Compute ΔE</div></div>
-    <div class="step-item"><div class="step-num">05</div><div class="step-label">Risk Report</div></div>
-</div>
-<div class="blue-divider"></div>
-""", unsafe_allow_html=True)
 
-
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ── SIDEBAR ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
-    <div style='font-family:"IBM Plex Mono",monospace;font-size:1.1rem;font-weight:600;
-    color:#F0F9FF;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #1E3A5F;'>
-    ⚛ QuantumRx
-    </div>""", unsafe_allow_html=True)
+    st.markdown('<div class="sb-head">⚛ QuantumRx</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="section-header">QUANTUM SETTINGS</div>', unsafe_allow_html=True)
-    backend_mode     = st.selectbox("Backend", ["Statevector (Exact)", "QASM (Noisy)", "IBM Cloud"], index=0)
-    max_iterations   = st.slider("VQE Iterations", 50, 500, 150, step=50)
-    optimizer_choice = st.selectbox("Optimizer", ["COBYLA", "SPSA", "L-BFGS-B"], index=0)
+    st.markdown('<div class="sb-section">QUANTUM ENGINE</div>', unsafe_allow_html=True)
+    backend   = st.selectbox("Backend", ["Statevector (Exact)", "QASM (Noisy)", "IBM Quantum Cloud"], index=0, label_visibility="collapsed")
+    max_iter  = st.slider("VQE Iterations", 50, 500, 150, step=50, label_visibility="collapsed")
+    optimizer = st.selectbox("Optimizer", ["COBYLA", "SPSA", "L-BFGS-B"], index=0, label_visibility="collapsed")
 
     st.markdown(f"""
-    <div class="sidebar-section"><strong>Active Config</strong>
-    Backend: {backend_mode}<br>Iterations: {max_iterations}<br>Optimizer: {optimizer_choice}
-    </div>""", unsafe_allow_html=True)
+    <div class="sb-info"><b>BACKEND</b>{backend}</div>
+    <div class="sb-info"><b>OPTIMIZER</b>{optimizer} · {max_iter} iterations</div>
+    """, unsafe_allow_html=True)
 
-    st.markdown('<br><div class="section-header">QUICK EXAMPLES</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-section">EXAMPLE PAIRS</div>', unsafe_allow_html=True)
     examples = [
-        ("Aspirin",    "Ibuprofen",    "⚠"),
-        ("Warfarin",   "Aspirin",      "🚨"),
-        ("Caffeine",   "Paracetamol",  "✅"),
-        ("Metformin",  "Atorvastatin", "⚠"),
-        ("Lisinopril", "Potassium",    "🚨"),
+        ("Aspirin",    "Ibuprofen",    "⚠", "caution"),
+        ("Warfarin",   "Aspirin",      "🚨", "danger"),
+        ("Caffeine",   "Paracetamol",  "✅", "safe"),
+        ("Metformin",  "Atorvastatin", "⚠", "caution"),
+        ("Lisinopril", "Potassium",    "🚨", "danger"),
+        ("Omeprazole", "Clopidogrel",  "⚠", "caution"),
     ]
-    for d1, d2, icon in examples:
-        if st.button(f"{icon} {d1} + {d2}", key=f"ex_{d1}_{d2}"):
-            st.session_state["drug1"] = d1
-            st.session_state["drug2"] = d2
+    for d1, d2, icon, _ in examples:
+        if st.button(f"{icon}  {d1} + {d2}", key=f"ex_{d1}_{d2}"):
+            st.session_state.drug1 = d1
+            st.session_state.drug2 = d2
+            st.rerun()
 
-    st.markdown("""<br><div class="sidebar-section">
-    <strong>Built At</strong>IISc QCTar Workshop · March 2026<br><br>
-    <strong>Stack</strong>Qiskit · Streamlit · PubChem API
-    </div>""", unsafe_allow_html=True)
+    st.markdown('<div class="sb-section">PROJECT INFO</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sb-info"><b>BUILT AT</b>IISc QCTar Workshop<br>March 2026 · Bengaluru</div>
+    <div class="sb-info"><b>STACK</b>Qiskit · Streamlit<br>Plotly · PubChem API</div>
+    <div class="sb-info"><b>DISCLAIMER</b>Educational research only.<br>Not for medical decisions.</div>
+    """, unsafe_allow_html=True)
 
 
-# ── Input ──────────────────────────────────────────────────────────────────────
-st.markdown('<div class="section-header">DRUG PAIR INPUT</div>', unsafe_allow_html=True)
-c1, gap, c2 = st.columns([5, 1, 5])
+# ── INPUT ──────────────────────────────────────────────────────────────────────
+col_a, col_plus, col_b, col_btn = st.columns([4, 0.5, 4, 2.5])
 
-with c1:
-    st.markdown('<div class="input-card"><div class="input-label">💊 DRUG A</div>', unsafe_allow_html=True)
-    drug1 = st.text_input("Drug A", value=st.session_state.get("drug1", "Aspirin"),
-                           placeholder="e.g. Aspirin", label_visibility="collapsed", key="d1")
+with col_a:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">DRUG  A</div>', unsafe_allow_html=True)
+    drug1 = st.text_input("d1", value=st.session_state.drug1,
+                           placeholder="e.g. Aspirin, Warfarin, Metformin",
+                           label_visibility="collapsed", key="inp_d1")
     st.markdown('</div>', unsafe_allow_html=True)
 
-with gap:
-    st.markdown("<div style='text-align:center;padding-top:2.2rem;font-family:IBM Plex Mono;font-size:1.2rem;color:#1E3A5F'>+</div>", unsafe_allow_html=True)
+with col_plus:
+    st.markdown("<div style='padding-top:2rem;text-align:center;font-family:JetBrains Mono;font-size:1.5rem;color:#0F2037'>+</div>", unsafe_allow_html=True)
 
-with c2:
-    st.markdown('<div class="input-card"><div class="input-label">💊 DRUG B</div>', unsafe_allow_html=True)
-    drug2 = st.text_input("Drug B", value=st.session_state.get("drug2", "Ibuprofen"),
-                           placeholder="e.g. Ibuprofen", label_visibility="collapsed", key="d2")
+with col_b:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">DRUG  B</div>', unsafe_allow_html=True)
+    drug2 = st.text_input("d2", value=st.session_state.drug2,
+                           placeholder="e.g. Ibuprofen, Paracetamol, Atorvastatin",
+                           label_visibility="collapsed", key="inp_d2")
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
-btn_col, _ = st.columns([3, 7])
-with btn_col:
-    run_btn = st.button("⚛  RUN QUANTUM SIMULATION", use_container_width=True)
+with col_btn:
+    st.markdown("<div style='padding-top:1.25rem'>", unsafe_allow_html=True)
+    run = st.button("⚛  SIMULATE", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ── Simulation ─────────────────────────────────────────────────────────────────
-if run_btn:
+# ── SIMULATION ─────────────────────────────────────────────────────────────────
+if run:
     if not drug1.strip() or not drug2.strip():
-        st.error("Please enter both drug names.")
+        st.error("Enter both drug names.")
         st.stop()
 
-    st.markdown('<div class="blue-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-header">RUNNING PIPELINE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="qrx-div"></div>', unsafe_allow_html=True)
 
+    # Pipeline progress
     prog   = st.progress(0)
     status = st.empty()
 
-    def upd(pct, msg):
+    def tick(pct, txt):
         prog.progress(pct)
-        status.markdown(f"<div style='font-family:\"IBM Plex Mono\",monospace;font-size:0.82rem;color:#38BDF8;padding:0.5rem 0;'>▶ {msg}</div>", unsafe_allow_html=True)
+        status.markdown(f"<div style='font-family:JetBrains Mono;font-size:0.78rem;color:#1E3A5F;padding:6px 0'>▸ {txt}</div>", unsafe_allow_html=True)
 
-    upd(10, f"[01/04] Querying PubChem API for {drug1} and {drug2}...")
-    time.sleep(0.4)
+    tick(8,  f"Querying PubChem API · {drug1.strip()}")
     mol1 = fetch_molecule_data(drug1.strip())
+    tick(16, f"Querying PubChem API · {drug2.strip()}")
     mol2 = fetch_molecule_data(drug2.strip())
 
     if not mol1:
-        st.error(f"❌ Not found: **{drug1}**. Use the generic name (e.g. 'Ibuprofen' not 'Advil').")
+        st.error(f"❌ Could not find **{drug1}**. Use the generic name (e.g. 'Ibuprofen' not 'Advil').")
         st.stop()
     if not mol2:
-        st.error(f"❌ Not found: **{drug2}**. Use the generic name.")
+        st.error(f"❌ Could not find **{drug2}**. Use the generic name.")
         st.stop()
 
-    upd(30, "[02/04] Building qubit Hamiltonians...")
-    time.sleep(0.4)
+    tick(30, f"Building qubit Hamiltonian · {mol1['name']}")
     ham1  = build_hamiltonian(mol1)
+    tick(40, f"Building qubit Hamiltonian · {mol2['name']}")
     ham2  = build_hamiltonian(mol2)
+    tick(50, "Building combined interaction Hamiltonian")
     hamc  = build_hamiltonian(mol1, mol2, combined=True)
 
-    upd(55, f"[03/04] Running VQE · {optimizer_choice} · {max_iterations} iterations...")
-    time.sleep(0.4)
-    e1    = run_vqe(ham1, optimizer=optimizer_choice, max_iter=max_iterations)
-    e2    = run_vqe(ham2, optimizer=optimizer_choice, max_iter=max_iterations)
-    ecomb = run_vqe(hamc, optimizer=optimizer_choice, max_iter=max_iterations)
+    tick(60, f"Running VQE · {optimizer} · {mol1['name']}")
+    e1    = run_vqe(ham1, optimizer=optimizer, max_iter=max_iter)
+    tick(72, f"Running VQE · {optimizer} · {mol2['name']}")
+    e2    = run_vqe(ham2, optimizer=optimizer, max_iter=max_iter)
+    tick(84, "Running VQE · Combined system")
+    ecomb = run_vqe(hamc, optimizer=optimizer, max_iter=max_iter)
 
-    upd(85, "[04/04] Computing ΔE and classifying interaction risk...")
-    time.sleep(0.4)
+    tick(94, "Calculating ΔE and classifying risk level")
+    time.sleep(0.3)
     delta_e = analyze_interaction(e1, e2, ecomb)
     risk_level, risk_label, risk_explanation = get_risk_level(delta_e)
 
     prog.progress(100)
     status.empty()
+    time.sleep(0.2)
+    prog.empty()
 
-    # ── Results ───────────────────────────────────────────────────────────────
-    st.markdown('<div class="blue-divider"></div>', unsafe_allow_html=True)
-
-    # Molecule profiles
-    st.markdown('<div class="section-header">MOLECULAR PROFILE</div>', unsafe_allow_html=True)
-    rc1, rc2 = st.columns(2)
-    with rc1:
-        st.markdown(f"""<div class="drug-info">
-            <div class="drug-info-name">💊 {mol1['name'].upper()}</div>
-            <div class="drug-info-detail">
-                Formula &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>{mol1['formula']}</span><br>
-                Mol. Weight &nbsp;&nbsp;<span>{mol1['weight']} g/mol</span><br>
-                Heavy Atoms &nbsp;&nbsp;<span>{mol1['atom_count']}</span><br>
-                PubChem CID &nbsp;<span>{mol1['cid']}</span><br>
-                Ground State &nbsp;<span>{e1:.6f} Ha</span>
-            </div></div>""", unsafe_allow_html=True)
-    with rc2:
-        st.markdown(f"""<div class="drug-info">
-            <div class="drug-info-name">💊 {mol2['name'].upper()}</div>
-            <div class="drug-info-detail">
-                Formula &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>{mol2['formula']}</span><br>
-                Mol. Weight &nbsp;&nbsp;<span>{mol2['weight']} g/mol</span><br>
-                Heavy Atoms &nbsp;&nbsp;<span>{mol2['atom_count']}</span><br>
-                PubChem CID &nbsp;<span>{mol2['cid']}</span><br>
-                Ground State &nbsp;<span>{e2:.6f} Ha</span>
-            </div></div>""", unsafe_allow_html=True)
-
-    # Metrics
-    st.markdown('<br><div class="section-header">QUANTUM METRICS</div>', unsafe_allow_html=True)
     delta_kcal = delta_e * 627.5
     binding    = "Strong" if abs(delta_e) > 0.02 else "Moderate" if abs(delta_e) > 0.005 else "Weak"
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{delta_e:.5f}</div><div class="metric-label">ΔE (Hartree)</div></div>', unsafe_allow_html=True)
-    with m2:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{delta_kcal:.2f}</div><div class="metric-label">ΔE (kcal/mol)</div></div>', unsafe_allow_html=True)
-    with m3:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{ecomb:.5f}</div><div class="metric-label">E(AB) Hartree</div></div>', unsafe_allow_html=True)
-    with m4:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{binding}</div><div class="metric-label">Binding Strength</div></div>', unsafe_allow_html=True)
 
-    # Verdict
-    st.markdown('<br><div class="section-header">INTERACTION VERDICT</div>', unsafe_allow_html=True)
-    css_map   = {"SAFE": "result-safe", "CAUTION": "result-caution", "DANGEROUS": "result-danger"}
-    color_map = {"SAFE": "#10B981", "CAUTION": "#F59E0B", "DANGEROUS": "#EF4444"}
-    icon_map  = {"SAFE": "✅", "CAUTION": "⚠️", "DANGEROUS": "🚨"}
-    st.markdown(f"""<div class="{css_map[risk_level]}">
-        <div class="result-title" style="color:{color_map[risk_level]}">{icon_map[risk_level]} {risk_label}</div>
-        <div class="result-body">{risk_explanation}</div>
-    </div>""", unsafe_allow_html=True)
+    css_map   = {"SAFE": "verdict-safe",    "CAUTION": "verdict-caution",  "DANGEROUS": "verdict-danger"}
+    color_map = {"SAFE": "#10B981",         "CAUTION": "#F59E0B",           "DANGEROUS": "#EF4444"}
+    icon_map  = {"SAFE": "✅",              "CAUTION": "⚠️",               "DANGEROUS": "🚨"}
+    badge_map = {"SAFE": "badge-safe",      "CAUTION": "badge-caution",     "DANGEROUS": "badge-danger"}
 
-    # Energy terminal
-    st.markdown('<div class="section-header">ENERGY TERMINAL</div>', unsafe_allow_html=True)
-    e_col = "color:#10B981" if risk_level=="SAFE" else "color:#F59E0B" if risk_level=="CAUTION" else "color:#EF4444"
+    # ── Save history ──────────────────────────────────────────────────────────
+    st.session_state.history.insert(0, {
+        "drugs": f"{mol1['name']} + {mol2['name']}",
+        "delta_e": delta_e,
+        "delta_kcal": delta_kcal,
+        "risk": risk_level,
+        "binding": binding,
+    })
+    if len(st.session_state.history) > 8:
+        st.session_state.history = st.session_state.history[:8]
+
+
+    # ══════════════════════ SECTION: MOLECULAR PROFILES ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">MOLECULAR PROFILES</div>', unsafe_allow_html=True)
+    p1, p2 = st.columns(2)
+
+    def mol_card(mol, energy, col):
+        with col:
+            st.markdown(f"""
+            <div class="mol-card">
+                <div class="mol-name">💊 {mol['name'].upper()}</div>
+                <div class="mol-row"><span class="mol-key">Molecular Formula</span><span class="mol-val">{mol['formula']}</span></div>
+                <div class="mol-row"><span class="mol-key">Molecular Weight</span><span class="mol-val">{mol['weight']} g/mol</span></div>
+                <div class="mol-row"><span class="mol-key">Heavy Atoms</span><span class="mol-val">{mol['atom_count']}</span></div>
+                <div class="mol-row"><span class="mol-key">PubChem CID</span><span class="mol-val">{mol['cid']}</span></div>
+                <div class="mol-row" style="border:none"><span class="mol-key">VQE Ground State</span>
+                    <span style="font-family:JetBrains Mono;font-size:0.78rem;color:#38BDF8">{energy:+.6f} Ha</span>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+    mol_card(mol1, e1, p1)
+    mol_card(mol2, e2, p2)
+
+
+    # ══════════════════════ SECTION: METRICS ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">QUANTUM METRICS</div>', unsafe_allow_html=True)
     st.markdown(f"""
-    <div class="terminal-header">
-        <span class="t-dot" style="background:#EF4444"></span>
-        <span class="t-dot" style="background:#F59E0B"></span>
-        <span class="t-dot" style="background:#10B981"></span>
-        &nbsp;<span style='font-family:"IBM Plex Mono",monospace;font-size:0.72rem;color:#475569;'>
-        quantumrx · {optimizer_choice} · {max_iterations} iter</span>
+    <div class="metric-grid">
+        <div class="metric-box">
+            <span class="metric-num">{delta_e:+.5f}</span>
+            <span class="metric-lbl">ΔE  (Hartree)</span>
+        </div>
+        <div class="metric-box">
+            <span class="metric-num">{delta_kcal:+.2f}</span>
+            <span class="metric-lbl">ΔE  (kcal · mol⁻¹)</span>
+        </div>
+        <div class="metric-box">
+            <span class="metric-num">{ecomb:+.5f}</span>
+            <span class="metric-lbl">E(AB)  Combined</span>
+        </div>
+        <div class="metric-box">
+            <span class="metric-num" style="color:{'#10B981' if risk_level=='SAFE' else '#F59E0B' if risk_level=='CAUTION' else '#EF4444'}">{binding}</span>
+            <span class="metric-lbl">Binding Strength</span>
+        </div>
     </div>
-    <div class="energy-terminal">
-        <span style="color:#64748B">$ drug_a     │ </span><span>{mol1['name']}</span><span style="color:#64748B">  formula=</span>{mol1['formula']}<br>
-        <span style="color:#64748B">$ drug_b     │ </span><span>{mol2['name']}</span><span style="color:#64748B">  formula=</span>{mol2['formula']}<br>
-        <span style="color:#1E3A5F">─────────────┼──────────────────────────────────</span><br>
-        <span style="color:#64748B">$ E(A)       │ </span><span>{e1:+.8f} Ha</span><br>
-        <span style="color:#64748B">$ E(B)       │ </span><span>{e2:+.8f} Ha</span><br>
-        <span style="color:#64748B">$ E(A)+E(B)  │ </span><span>{(e1+e2):+.8f} Ha</span><br>
-        <span style="color:#64748B">$ E(AB)      │ </span><span>{ecomb:+.8f} Ha</span><br>
-        <span style="color:#1E3A5F">─────────────┼──────────────────────────────────</span><br>
-        <span style="color:#64748B">$ ΔE         │ </span><span style="color:#F0F9FF;font-weight:600">{delta_e:+.8f} Ha</span><span style="color:#64748B"> ({delta_kcal:+.3f} kcal/mol)</span><br>
-        <span style="color:#64748B">$ risk       │ </span><span style="{e_col};font-weight:600">{risk_level}</span>
+    """, unsafe_allow_html=True)
+
+
+    # ══════════════════════ SECTION: VERDICT ══════════════════════
+    st.markdown('<div class="card-title">INTERACTION VERDICT</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="verdict-card {css_map[risk_level]}">
+        <div class="verdict-label" style="color:{color_map[risk_level]}">{icon_map[risk_level]} {risk_label}</div>
+        <div class="verdict-text">{risk_explanation}</div>
     </div>""", unsafe_allow_html=True)
 
-    # Charts
-    st.markdown('<br><div class="section-header">ENERGY VISUALISATION</div>', unsafe_allow_html=True)
-    ch1, ch2 = st.columns([3, 2])
 
+    # ══════════════════════ SECTION: CHARTS ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">ENERGY ANALYSIS</div>', unsafe_allow_html=True)
+    ch1, ch2, ch3 = st.columns([2.5, 2, 2])
+
+    PLOT_BG   = "rgba(0,0,0,0)"
+    PAPER_BG  = "rgba(0,0,0,0)"
+    FONT      = dict(family="JetBrains Mono", color="#334155", size=11)
+    GRID      = "#0A1628"
+
+    # Bar chart
     with ch1:
-        bar_c = ["#2563EB","#3B82F6",
-                 "#EF4444" if risk_level=="DANGEROUS" else "#F59E0B" if risk_level=="CAUTION" else "#10B981"]
-        fig = go.Figure(go.Bar(
-            x=[drug1, drug2, f"{drug1}+{drug2}"],
-            y=[abs(e1), abs(e2), abs(ecomb)],
-            marker_color=bar_c,
-            text=[f"{abs(e1):.5f}", f"{abs(e2):.5f}", f"{abs(ecomb):.5f}"],
-            textposition="outside",
-            textfont=dict(family="IBM Plex Mono", size=11, color="#94A3B8")
-        ))
-        fig.update_layout(
-            title=dict(text="Ground State Energies (Hartree)", font=dict(family="IBM Plex Mono", color="#94A3B8", size=13)),
-            paper_bgcolor="#020B18", plot_bgcolor="#0A1628",
-            font=dict(color="#64748B", family="IBM Plex Mono"),
-            yaxis=dict(gridcolor="#1E3A5F", title="|Energy| (Ha)", color="#64748B", title_font=dict(size=11)),
-            xaxis=dict(gridcolor="#1E3A5F", color="#64748B"),
-            height=320, margin=dict(t=50, b=20, l=10, r=10), showlegend=False
+        fig_bar = go.Figure()
+        labels = [mol1['name'], mol2['name'], "Combined AB"]
+        vals   = [abs(e1), abs(e2), abs(ecomb)]
+        bar_c  = ["#2563EB", "#3B82F6",
+                  "#10B981" if risk_level=="SAFE" else "#F59E0B" if risk_level=="CAUTION" else "#EF4444"]
+        for i, (lbl, val, c) in enumerate(zip(labels, vals, bar_c)):
+            fig_bar.add_trace(go.Bar(
+                name=lbl, x=[lbl], y=[val],
+                marker=dict(color=c, opacity=0.85, line=dict(width=0)),
+                text=[f"{val:.5f} Ha"], textposition="outside",
+                textfont=dict(family="JetBrains Mono", size=10, color="#334155"),
+            ))
+        fig_bar.update_layout(
+            title=dict(text="Ground State Energies", font=dict(**FONT, size=12, color="#1E3A5F")),
+            paper_bgcolor=PAPER_BG, plot_bgcolor=PLOT_BG,
+            font=FONT, showlegend=False, barmode="group",
+            yaxis=dict(gridcolor=GRID, title="|E| (Ha)", title_font=dict(size=10, color="#1E3A5F"),
+                       tickfont=dict(size=9), color="#1E3A5F"),
+            xaxis=dict(tickfont=dict(size=10), color="#1E3A5F"),
+            height=300, margin=dict(t=40, b=10, l=10, r=10)
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
 
+    # Gauge
     with ch2:
         gauge_val = min(abs(delta_kcal), 20)
-        fig2 = go.Figure(go.Indicator(
-            mode="gauge+number",
+        fig_g = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
             value=gauge_val,
-            number=dict(suffix=" kcal/mol", font=dict(family="IBM Plex Mono", color="#38BDF8", size=16)),
+            delta=dict(reference=3.1, valueformat=".2f",
+                       font=dict(family="JetBrains Mono", size=12),
+                       increasing=dict(color="#EF4444"), decreasing=dict(color="#10B981")),
+            number=dict(suffix=" kcal/mol", font=dict(family="JetBrains Mono", color=color_map[risk_level], size=15)),
             gauge=dict(
-                axis=dict(range=[0, 20], tickfont=dict(family="IBM Plex Mono", size=10, color="#475569")),
-                bar=dict(color=color_map[risk_level]),
-                bgcolor="#0A1628", bordercolor="#1E3A5F",
+                axis=dict(range=[0, 20], tickfont=dict(family="JetBrains Mono", size=9, color="#334155"),
+                          dtick=5, tickcolor="#0F2037"),
+                bar=dict(color=color_map[risk_level], thickness=0.25),
+                bgcolor="rgba(0,0,0,0)", borderwidth=0,
                 steps=[
-                    dict(range=[0, 3.1],   color="#022C22"),
-                    dict(range=[3.1, 12.6], color="#1C1203"),
-                    dict(range=[12.6, 20],  color="#1C0505"),
-                ]
+                    dict(range=[0, 3.1],   color="rgba(16,185,129,0.06)"),
+                    dict(range=[3.1, 12.6], color="rgba(245,158,11,0.06)"),
+                    dict(range=[12.6, 20],  color="rgba(239,68,68,0.06)"),
+                ],
+                threshold=dict(line=dict(color=color_map[risk_level], width=2), thickness=0.75, value=gauge_val)
             ),
-            title=dict(text="Interaction Strength", font=dict(family="IBM Plex Mono", color="#94A3B8", size=13))
+            title=dict(text="Interaction Strength", font=dict(family="JetBrains Mono", color="#1E3A5F", size=12))
         ))
-        fig2.update_layout(paper_bgcolor="#020B18", height=320, margin=dict(t=50, b=20, l=20, r=20))
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+        fig_g.update_layout(paper_bgcolor=PAPER_BG, height=300, margin=dict(t=40, b=0, l=20, r=20))
+        st.plotly_chart(fig_g, use_container_width=True, config={"displayModeBar": False})
 
-    # VQE circuit
-    st.markdown('<div class="section-header">VQE ANSATZ CIRCUIT (TWOLOCAL · 2-QUBIT)</div>', unsafe_allow_html=True)
-    st.markdown("""<div class="circuit-box">
-        <span style="color:#38BDF8">q₀</span> ─┤ <span style="color:#F0F9FF">Ry(θ₀)</span> ├─┤ <span style="color:#F0F9FF">Rz(θ₁)</span> ├─<span style="color:#F0F9FF">●</span>─────────────────┤ <span style="color:#F0F9FF">Ry(θ₄)</span> ├─┤ <span style="color:#F0F9FF">Rz(θ₅)</span> ├─<span style="color:#10B981">┤M├</span><br>
-        <span style="color:#38BDF8">q₁</span> ─┤ <span style="color:#F0F9FF">Ry(θ₂)</span> ├─┤ <span style="color:#F0F9FF">Rz(θ₃)</span> ├─<span style="color:#F0F9FF">⊕</span>─────────────────┤ <span style="color:#F0F9FF">Ry(θ₆)</span> ├─┤ <span style="color:#F0F9FF">Rz(θ₇)</span> ├─<span style="color:#10B981">┤M├</span><br>
+    # Radar chart — molecular property comparison
+    with ch3:
+        w_max = max(float(mol1['weight']), float(mol2['weight']), 1)
+        a_max = max(mol1['atom_count'], mol2['atom_count'], 1)
+        cats  = ['Mol. Weight', 'Atom Count', 'Energy Scale', 'Complexity', 'Interaction']
+        r1 = [
+            float(mol1['weight'])/w_max,
+            mol1['atom_count']/a_max,
+            min(abs(e1)/0.5, 1),
+            min(mol1['atom_count']/30, 1),
+            min(abs(delta_e)*50, 1)
+        ]
+        r2 = [
+            float(mol2['weight'])/w_max,
+            mol2['atom_count']/a_max,
+            min(abs(e2)/0.5, 1),
+            min(mol2['atom_count']/30, 1),
+            min(abs(delta_e)*50, 1)
+        ]
+        fig_r = go.Figure()
+        fig_r.add_trace(go.Scatterpolar(r=r1+[r1[0]], theta=cats+[cats[0]],
+            fill='toself', name=mol1['name'],
+            line=dict(color='#2563EB', width=1.5),
+            fillcolor='rgba(37,99,235,0.08)'))
+        fig_r.add_trace(go.Scatterpolar(r=r2+[r2[0]], theta=cats+[cats[0]],
+            fill='toself', name=mol2['name'],
+            line=dict(color='#38BDF8', width=1.5),
+            fillcolor='rgba(56,189,248,0.06)'))
+        fig_r.update_layout(
+            polar=dict(
+                bgcolor='rgba(0,0,0,0)',
+                radialaxis=dict(visible=True, range=[0,1], tickfont=dict(size=8, color="#1E3A5F"),
+                                gridcolor="#0A1628", linecolor="#0A1628"),
+                angularaxis=dict(tickfont=dict(family="JetBrains Mono", size=9, color="#334155"),
+                                 linecolor="#0F2037", gridcolor="#0F2037"),
+            ),
+            paper_bgcolor=PAPER_BG,
+            showlegend=True,
+            legend=dict(font=dict(family="JetBrains Mono", size=9, color="#334155"),
+                        bgcolor="rgba(0,0,0,0)", x=0.8, y=1.1),
+            title=dict(text="Molecular Properties", font=dict(family="JetBrains Mono", color="#1E3A5F", size=12)),
+            height=300, margin=dict(t=40, b=10, l=10, r=10)
+        )
+        st.plotly_chart(fig_r, use_container_width=True, config={"displayModeBar": False})
+
+
+    # ══════════════════════ SECTION: ENERGY TERMINAL ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">ENERGY TERMINAL</div>', unsafe_allow_html=True)
+    risk_cls = {"SAFE": "tl-safe", "CAUTION": "tl-warn", "DANGEROUS": "tl-danger"}[risk_level]
+    st.markdown(f"""
+    <div class="qrx-terminal">
+        <div class="terminal-bar">
+            <span class="td" style="background:#FF5F57"></span>
+            <span class="td" style="background:#FEBC2E"></span>
+            <span class="td" style="background:#28C840"></span>
+            <span style="font-family:JetBrains Mono;font-size:0.68rem;color:#1E3A5F;margin-left:8px">
+                quantumrx · vqe_engine · {optimizer} · {max_iter}iter
+            </span>
+        </div>
+        <div class="terminal-body">
+<span class="tl-dim">╔══════════════════════════════════════════════════════════╗</span>
+<span class="tl-dim">║</span>  <span class="tl-key">session</span>    <span class="tl-val">quantum_drug_analysis</span>                         <span class="tl-dim">║</span>
+<span class="tl-dim">╚══════════════════════════════════════════════════════════╝</span>
+
+<span class="tl-key">molecule_a   </span><span class="tl-dim">│</span> <span class="tl-val">{mol1['name']}</span>
+<span class="tl-key">  formula    </span><span class="tl-dim">│</span> <span class="tl-val">{mol1['formula']}</span>
+<span class="tl-key">  weight     </span><span class="tl-dim">│</span> <span class="tl-val">{mol1['weight']} g/mol</span>
+
+<span class="tl-key">molecule_b   </span><span class="tl-dim">│</span> <span class="tl-val">{mol2['name']}</span>
+<span class="tl-key">  formula    </span><span class="tl-dim">│</span> <span class="tl-val">{mol2['formula']}</span>
+<span class="tl-key">  weight     </span><span class="tl-dim">│</span> <span class="tl-val">{mol2['weight']} g/mol</span>
+
+<span class="tl-dim">──────────────┬──────────────────────────────────────────────</span>
+<span class="tl-key">E(A)          </span><span class="tl-dim">│</span> <span class="tl-val">{e1:+.10f} Ha</span>
+<span class="tl-key">E(B)          </span><span class="tl-dim">│</span> <span class="tl-val">{e2:+.10f} Ha</span>
+<span class="tl-key">E(A) + E(B)   </span><span class="tl-dim">│</span> <span class="tl-val">{(e1+e2):+.10f} Ha</span>
+<span class="tl-key">E(AB)         </span><span class="tl-dim">│</span> <span class="tl-val">{ecomb:+.10f} Ha</span>
+<span class="tl-dim">──────────────┼──────────────────────────────────────────────</span>
+<span class="tl-key">ΔE (Ha)       </span><span class="tl-dim">│</span> <span class="tl-hi">{delta_e:+.10f} Ha</span>
+<span class="tl-key">ΔE (kcal/mol) </span><span class="tl-dim">│</span> <span class="tl-hi">{delta_kcal:+.4f} kcal · mol⁻¹</span>
+<span class="tl-key">binding       </span><span class="tl-dim">│</span> <span class="tl-val">{binding}</span>
+<span class="tl-key">risk_level    </span><span class="tl-dim">│</span> <span class="{risk_cls}">{risk_level}</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+
+    # ══════════════════════ SECTION: VQE CIRCUIT ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">VQE ANSATZ CIRCUIT</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="qrx-circuit">
+        <span style="color:#1E3A5F">  TwoLocal Ansatz  ·  2 qubits  ·  reps=2  ·  linear entanglement</span>
+        <br><br>
+        <span style="color:#38BDF8">  q₀</span><span style="color:#1E3A5F"> ─</span>┤<span style="color:#F1F5F9">Ry(θ₀)</span>├─┤<span style="color:#F1F5F9">Rz(θ₁)</span>├─<span style="color:#F1F5F9">●</span>───────────────────┤<span style="color:#F1F5F9">Ry(θ₄)</span>├─┤<span style="color:#F1F5F9">Rz(θ₅)</span>├─<span style="color:#10B981">┤M├</span>─
         <br>
-        <span style="color:#475569">  Rotation (Ry,Rz) → CNOT entanglement → Rotation → Measure</span><br>
-        <span style="color:#475569">  θ₀..θ₇ optimized by </span><span style="color:#38BDF8">{}</span><span style="color:#475569"> to minimize ⟨ψ|H|ψ⟩</span>
-    </div>""".format(optimizer_choice), unsafe_allow_html=True)
+        <span style="color:#1E3A5F">        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│</span>
+        <br>
+        <span style="color:#38BDF8">  q₁</span><span style="color:#1E3A5F"> ─</span>┤<span style="color:#F1F5F9">Ry(θ₂)</span>├─┤<span style="color:#F1F5F9">Rz(θ₃)</span>├─<span style="color:#F1F5F9">⊕</span>───────────────────┤<span style="color:#F1F5F9">Ry(θ₆)</span>├─┤<span style="color:#F1F5F9">Rz(θ₇)</span>├─<span style="color:#10B981">┤M├</span>─
+        <br><br>
+        <span style="color:#1E3A5F">  Parameters  θ₀..θ₇  optimized by  </span><span style="color:#38BDF8">{optimizer}</span><span style="color:#1E3A5F">  to minimize  ⟨ψ(θ)|H|ψ(θ)⟩</span>
+        <br>
+        <span style="color:#1E3A5F">  Convergence  ·  max_iter={max_iter}  ·  backend={backend}</span>
+    </div>""", unsafe_allow_html=True)
+
+
+    # ══════════════════════ SECTION: HISTORY ══════════════════════
+    if len(st.session_state.history) > 1:
+        st.markdown('<div class="card-title" style="margin-top:2rem">SIMULATION HISTORY</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card" style="padding:0;overflow:hidden">', unsafe_allow_html=True)
+        st.markdown("""
+        <div class="history-row" style="border-bottom:1px solid #0F2037">
+            <span style="font-family:JetBrains Mono;font-size:0.65rem;letter-spacing:2px;color:#1E3A5F;flex:1">DRUG PAIR</span>
+            <span style="font-family:JetBrains Mono;font-size:0.65rem;letter-spacing:2px;color:#1E3A5F;width:180px">ΔE</span>
+            <span style="font-family:JetBrains Mono;font-size:0.65rem;letter-spacing:2px;color:#1E3A5F;width:100px">RISK</span>
+        </div>""", unsafe_allow_html=True)
+        for h in st.session_state.history:
+            st.markdown(f"""
+            <div class="history-row">
+                <span class="history-drugs">{h['drugs']}</span>
+                <span class="history-de">{h['delta_e']:+.5f} Ha &nbsp;·&nbsp; {h['delta_kcal']:+.2f} kcal/mol</span>
+                <span class="history-badge {badge_map[h['risk']]}">{h['risk']}</span>
+            </div>""", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.info("⚠️ **Research Only** — Educational quantum simulation. Never use for actual medical decisions. Always consult a licensed healthcare professional.")
+    st.info("⚠️ **Research Only** — Simplified quantum simulation for educational purposes. Never use for actual medical decisions. Always consult a licensed healthcare professional.")
 
+
+# ── LANDING STATE ──────────────────────────────────────────────────────────────
 else:
     st.markdown("""
-    <div style='text-align:center;padding:4rem 2rem;background:#0A1628;border:1px solid #1E3A5F;
-    border-radius:14px;margin-top:1rem;'>
-        <div style='font-size:3.5rem;margin-bottom:1rem;'>⚛</div>
-        <div style='font-family:"IBM Plex Mono",monospace;font-size:1rem;color:#38BDF8;margin-bottom:0.8rem;'>
-        READY TO SIMULATE</div>
-        <div style='color:#475569;font-size:0.88rem;max-width:420px;margin:0 auto;line-height:1.9;'>
-        Enter two drug names above and click
-        <strong style="color:#2563EB">Run Quantum Simulation</strong>
-        to compute their quantum-level interaction energy using VQE.
+    <div style='text-align:center;padding:5rem 2rem;background:#080F1E;
+    border:1px solid #0F2037;border-radius:18px;margin-top:1.5rem;'>
+        <div style='font-size:4rem;margin-bottom:1.5rem;opacity:0.4'>⚛</div>
+        <div style='font-family:JetBrains Mono;font-size:0.85rem;letter-spacing:3px;
+        color:#1E3A5F;margin-bottom:1rem;'>AWAITING SIMULATION</div>
+        <div style='color:#1E3A5F;font-size:0.88rem;max-width:420px;
+        margin:0 auto;line-height:2;font-family:JetBrains Mono;'>
+        Enter two drug names above<br>
+        and click <span style="color:#2563EB">⚛ SIMULATE</span><br>
+        to run the quantum pipeline
         </div>
     </div>""", unsafe_allow_html=True)
