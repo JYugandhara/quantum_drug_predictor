@@ -476,11 +476,11 @@ if run:
     hamc  = build_hamiltonian(mol1, mol2, combined=True)
 
     tick(60, f"Running VQE · {optimizer} · {mol1['name']}")
-    e1    = run_vqe(ham1, optimizer=optimizer, max_iter=max_iter)
+    e1,    conv1  = run_vqe(ham1, optimizer=optimizer, max_iter=max_iter)
     tick(72, f"Running VQE · {optimizer} · {mol2['name']}")
-    e2    = run_vqe(ham2, optimizer=optimizer, max_iter=max_iter)
+    e2,    conv2  = run_vqe(ham2, optimizer=optimizer, max_iter=max_iter)
     tick(84, "Running VQE · Combined system")
-    ecomb = run_vqe(hamc, optimizer=optimizer, max_iter=max_iter)
+    ecomb, conv3  = run_vqe(hamc, optimizer=optimizer, max_iter=max_iter)
 
     tick(94, "Calculating ΔE and classifying risk level")
     time.sleep(0.3)
@@ -736,6 +736,100 @@ if run:
         </div>
     </div>""", unsafe_allow_html=True)
 
+
+    # ══════════════════════ SECTION: CONVERGENCE CHART ══════════════════════
+    st.markdown('<div class="card-title" style="margin-top:2rem">VQE CONVERGENCE CURVES</div>', unsafe_allow_html=True)
+
+    # Smooth histories to same length for clean plotting
+    def smooth(data, window=3):
+        if len(data) < window:
+            return data
+        result = []
+        for i in range(len(data)):
+            start = max(0, i - window + 1)
+            result.append(sum(data[start:i+1]) / (i - start + 1))
+        return result
+
+    fig_conv = go.Figure()
+
+    colors = [
+        ("#2563EB", "rgba(37,99,235,0.08)", mol1['name']),
+        ("#38BDF8", "rgba(56,189,248,0.06)", mol2['name']),
+        (color_map[risk_level], f"rgba(0,0,0,0.0)", f"{mol1['name']} + {mol2['name']} Combined"),
+    ]
+
+    for conv, (line_color, fill_color, label) in zip([conv1, conv2, conv3], colors):
+        if conv:
+            smoothed = smooth(conv)
+            x = list(range(1, len(smoothed) + 1))
+            fig_conv.add_trace(go.Scatter(
+                x=x, y=smoothed,
+                mode="lines",
+                name=label,
+                line=dict(color=line_color, width=1.5),
+                fill="tozeroy",
+                fillcolor=fill_color,
+                hovertemplate="Iter %{x}: %{y:.6f} Ha<extra></extra>"
+            ))
+            # Mark the final converged value
+            fig_conv.add_trace(go.Scatter(
+                x=[len(smoothed)], y=[smoothed[-1]],
+                mode="markers",
+                name=f"{label} (converged)",
+                marker=dict(color=line_color, size=8, symbol="circle",
+                            line=dict(color="#F1F5F9", width=1)),
+                showlegend=False,
+                hovertemplate=f"Converged: %{{y:.6f}} Ha<extra></extra>"
+            ))
+
+    # Add horizontal convergence threshold line
+    fig_conv.add_hline(
+        y=min([c[-1] for c in [conv1, conv2, conv3] if c] or [0]),
+        line=dict(color="#334155", width=1, dash="dot"),
+        annotation_text="min E",
+        annotation_font=dict(family="JetBrains Mono", size=9, color="#334155")
+    )
+
+    fig_conv.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(8,15,30,0.8)",
+        font=dict(family="JetBrains Mono", color="#334155", size=10),
+        xaxis=dict(
+            title="Optimizer Iteration",
+            title_font=dict(size=10, color="#1E3A5F"),
+            gridcolor="#0A1628", color="#334155",
+            tickfont=dict(size=9)
+        ),
+        yaxis=dict(
+            title="Energy (Hartree)",
+            title_font=dict(size=10, color="#1E3A5F"),
+            gridcolor="#0A1628", color="#334155",
+            tickfont=dict(size=9)
+        ),
+        legend=dict(
+            font=dict(family="JetBrains Mono", size=9, color="#475569"),
+            bgcolor="rgba(8,15,30,0.9)",
+            bordercolor="#0F2037", borderwidth=1,
+            x=0.75, y=0.98
+        ),
+        height=320,
+        margin=dict(t=20, b=40, l=60, r=20),
+        hovermode="x unified"
+    )
+
+    st.plotly_chart(fig_conv, use_container_width=True, config={"displayModeBar": False})
+
+    # Convergence stats
+    stat1, stat2, stat3, stat4 = st.columns(4)
+    with stat1:
+        st.markdown(f'<div class="metric-box"><span class="metric-num">{len(conv1)}</span><span class="metric-lbl">Drug A iterations</span></div>', unsafe_allow_html=True)
+    with stat2:
+        st.markdown(f'<div class="metric-box"><span class="metric-num">{len(conv2)}</span><span class="metric-lbl">Drug B iterations</span></div>', unsafe_allow_html=True)
+    with stat3:
+        st.markdown(f'<div class="metric-box"><span class="metric-num">{len(conv3)}</span><span class="metric-lbl">Combined iterations</span></div>', unsafe_allow_html=True)
+    with stat4:
+        total_evals = len(conv1) + len(conv2) + len(conv3)
+        st.markdown(f'<div class="metric-box"><span class="metric-num">{total_evals}</span><span class="metric-lbl">Total evaluations</span></div>', unsafe_allow_html=True)
 
     # ══════════════════════ SECTION: VQE CIRCUIT ══════════════════════
     st.markdown('<div class="card-title" style="margin-top:2rem">VQE ANSATZ CIRCUIT</div>', unsafe_allow_html=True)
