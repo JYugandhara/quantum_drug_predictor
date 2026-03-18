@@ -485,7 +485,9 @@ if run:
     tick(94, "Calculating ΔE and classifying risk level")
     time.sleep(0.3)
     delta_e = analyze_interaction(e1, e2, ecomb)
-    risk_level, risk_label, risk_explanation = get_risk_level(delta_e)
+    risk_level, risk_label, risk_explanation, detection_method = get_risk_level(
+        delta_e, drug1.strip(), drug2.strip()
+    )
 
     prog.progress(100)
     status.empty()
@@ -502,11 +504,12 @@ if run:
 
     # ── Save history ──────────────────────────────────────────────────────────
     st.session_state.history.insert(0, {
-        "drugs": f"{mol1['name']} + {mol2['name']}",
-        "delta_e": delta_e,
+        "drugs":      f"{mol1['name']} + {mol2['name']}",
+        "delta_e":    delta_e,
         "delta_kcal": delta_kcal,
-        "risk": risk_level,
-        "binding": binding,
+        "risk":       risk_level,
+        "binding":    binding,
+        "method":     detection_method,
     })
     if len(st.session_state.history) > 8:
         st.session_state.history = st.session_state.history[:8]
@@ -560,10 +563,30 @@ if run:
 
     # ══════════════════════ SECTION: VERDICT ══════════════════════
     st.markdown('<div class="card-title">INTERACTION VERDICT</div>', unsafe_allow_html=True)
+
+    detect_color = {
+        "CLINICAL": ("#EF4444", "#1C0505", "🏥 CLINICAL DATABASE"),
+        "CYP450":   ("#F59E0B", "#1C1203", "🧬 CYP450 ENZYME DB"),
+        "QUANTUM":  ("#38BDF8", "#020B18", "⚛ QUANTUM VQE MODEL"),
+    }[detection_method]
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.8rem;">
+        <span style="font-family:JetBrains Mono;font-size:0.65rem;letter-spacing:2px;
+        color:{detect_color[0]};background:{detect_color[1]};
+        border:1px solid {detect_color[0]}33;
+        padding:4px 12px;border-radius:100px;">
+        {detect_color[2]}
+        </span>
+        <span style="font-family:JetBrains Mono;font-size:0.72rem;color:#1E3A5F;">
+        Detection layer: {detection_method}
+        </span>
+    </div>""", unsafe_allow_html=True)
+
     st.markdown(f"""
     <div class="verdict-card {css_map[risk_level]}">
-        <div class="verdict-label" style="color:{color_map[risk_level]}">{icon_map[risk_level]} {risk_label}</div>
-        <div class="verdict-text">{risk_explanation}</div>
+        <div class="verdict-label" style="color:{color_map[risk_level]}">{risk_label}</div>
+        <div class="verdict-text">{risk_explanation.replace(chr(10), '<br>')}</div>
     </div>""", unsafe_allow_html=True)
 
 
@@ -743,10 +766,13 @@ if run:
             <span style="font-family:JetBrains Mono;font-size:0.65rem;letter-spacing:2px;color:#1E3A5F;width:100px">RISK</span>
         </div>""", unsafe_allow_html=True)
         for h in st.session_state.history:
+            method_color = {"CLINICAL":"#EF4444","CYP450":"#F59E0B","QUANTUM":"#38BDF8"}.get(h.get("method","QUANTUM"),"#38BDF8")
             st.markdown(f"""
             <div class="history-row">
                 <span class="history-drugs">{h['drugs']}</span>
-                <span class="history-de">{h['delta_e']:+.5f} Ha &nbsp;·&nbsp; {h['delta_kcal']:+.2f} kcal/mol</span>
+                <span class="history-de">{h['delta_e']:+.5f} Ha</span>
+                <span style="font-family:JetBrains Mono;font-size:0.65rem;color:{method_color};
+                width:80px">{h.get('method','QUANTUM')}</span>
                 <span class="history-badge {badge_map[h['risk']]}">{h['risk']}</span>
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
