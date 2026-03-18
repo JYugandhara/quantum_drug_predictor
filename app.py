@@ -420,23 +420,19 @@ with st.sidebar:
 col_a, col_plus, col_b, col_btn = st.columns([4, 0.5, 4, 2.5])
 
 with col_a:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">DRUG  A</div>', unsafe_allow_html=True)
     drug1 = st.text_input("d1", value=st.session_state.drug1,
                            placeholder="e.g. Aspirin, Warfarin, Metformin",
                            label_visibility="collapsed", key="inp_d1")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with col_plus:
-    st.markdown("<div style='padding-top:2rem;text-align:center;font-family:JetBrains Mono;font-size:1.5rem;color:#0F2037'>+</div>", unsafe_allow_html=True)
+    st.markdown("<div style='padding-top:1.5rem;text-align:center;font-family:JetBrains Mono;font-size:1.5rem;color:#0F2037'>+</div>", unsafe_allow_html=True)
 
 with col_b:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">DRUG  B</div>', unsafe_allow_html=True)
     drug2 = st.text_input("d2", value=st.session_state.drug2,
                            placeholder="e.g. Ibuprofen, Paracetamol, Atorvastatin",
                            label_visibility="collapsed", key="inp_d2")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with col_btn:
     st.markdown("<div style='padding-top:1.25rem'>", unsafe_allow_html=True)
